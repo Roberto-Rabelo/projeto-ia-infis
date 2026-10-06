@@ -1,0 +1,31 @@
+@Api.Atendimento_HostAddress = http://localhost:5100
+
+GET {{Api.Atendimento_HostAddress}}/health
+Accept: application/json
+
+###
+
+GET {{Api.Atendimento_HostAddress}}/conhecimento/ferramentas
+Accept: application/json
+
+###
+
+POST {{Api.Atendimento_HostAddress}}/conhecimento/buscar
+Content-Type: application/json
+Accept: application/json
+
+{
+  "consulta": "teste de descoberta MCP"
+}
+
+###
+
+POST {{Api.Atendimento_HostAddress}}/atendimento
+Content-Type: application/json
+Accept: application/json
+
+{
+  "pergunta": "Qual o horário de atendimento ao aluno?"
+}
+
+###
