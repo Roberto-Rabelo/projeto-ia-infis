@@ -4,5 +4,5 @@ namespace Api.Atendimento.Services;
 
 public interface IAtendimentoService
 {
-    Task<AtendimentoResponse> ResponderAsync(string pergunta, CancellationToken cancellationToken);
+    Task<AtendimentoResponse> ResponderAsync(string usuario, string pergunta, CancellationToken cancellationToken);
 }

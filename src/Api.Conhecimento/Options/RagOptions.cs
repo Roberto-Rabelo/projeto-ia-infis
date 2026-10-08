@@ -11,4 +11,8 @@ public sealed class RagOptions
     public int SobreposicaoChunk { get; set; } = 80;
 
     public int QuantidadeResultados { get; set; } = 3;
+
+    public string IdAgente { get; set; } = "api-conhecimento";
+
+    public int TamanhoMaximoArquivoBytes { get; set; } = 2 * 1024 * 1024;
 }

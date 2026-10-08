@@ -1,0 +1,146 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: rag-infis-postgres
+    environment:
+      POSTGRES_DB: bd-rag-infis
+      POSTGRES_USER: infis
+      POSTGRES_PASSWORD: infis
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - rede-rag-infis
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U infis -d bd-rag-infis"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: rag-infis-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: infis@email.com
+      PGADMIN_DEFAULT_PASSWORD: infis@2026
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+    ports:
+      - "5051:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rede-rag-infis
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/misc/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  mongodb:
+    image: mongo:7
+    container_name: historico-infis-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: infis
+      MONGO_INITDB_ROOT_PASSWORD: infis
+      MONGO_INITDB_DATABASE: bd-historico-atendimentos
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./docker/mongodb/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - rede-rag-infis
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "-u", "infis", "-p", "infis", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  mongo-express:
+    image: mongo-express:1.0.2-20-alpine3.19
+    container_name: historico-infis-mongo-express
+    user: root
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://infis:infis@mongodb:27017/bd-historico-atendimentos?authSource=admin
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
+      ME_CONFIG_BASICAUTH_USERNAME: infis
+      ME_CONFIG_BASICAUTH_PASSWORD: infis
+      ME_CONFIG_SITE_BASEURL: /
+    ports:
+      - "5052:8081"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - rede-rag-infis
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: custos-infis-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: Coti@2026
+      MSSQL_PID: Developer
+    ports:
+      - "1434:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+      - ./docker/sqlserver/init:/init:ro
+    command:
+      - /bin/bash
+      - -lc
+      - |
+        /opt/mssql/bin/sqlservr &
+        pid=$$!
+        echo "Aguardando SQL Server..."
+        for i in $$(seq 1 60); do
+          if /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" >/dev/null 2>&1; then
+            echo "SQL Server pronto. Aplicando script inicial."
+            /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -i /init/01-create-database.sql
+            break
+          fi
+          sleep 2
+        done
+        wait $$pid
+    networks:
+      - rede-rag-infis
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -d bd-custos-ia -Q \"SELECT 1\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  adminer:
+    image: adminer:4
+    container_name: custos-infis-adminer
+    environment:
+      ADMINER_DESIGN: pepa-linha
+      ADMINER_DEFAULT_SERVER: sqlserver
+    ports:
+      - "5053:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    networks:
+      - rede-rag-infis
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+  mongodb_data:
+  sqlserver_data:
+
+networks:
+  rede-rag-infis:
+    name: rede-rag-infis
+    driver: bridge

@@ -32,6 +32,6 @@ public class ConhecimentoTools
 
         return string.Join(
             "\n\n---\n\n",
-            trechos.Select(trecho => trecho.Texto));
+            trechos.Select(trecho => $"Fonte: {trecho.Arquivo}\n{trecho.Texto}"));
     }
 }

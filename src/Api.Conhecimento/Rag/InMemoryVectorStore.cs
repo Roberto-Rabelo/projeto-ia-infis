@@ -15,6 +15,16 @@ public sealed class InMemoryVectorStore : IVectorStore
         }
     }
 
+    public void Adicionar(IReadOnlyList<DocumentChunk> chunks)
+    {
+        ArgumentNullException.ThrowIfNull(chunks);
+
+        lock (_lock)
+        {
+            _chunks = _chunks.Concat(chunks).ToList();
+        }
+    }
+
     public IReadOnlyList<DocumentChunk> ObterTodos()
     {
         lock (_lock)

@@ -24,3 +24,28 @@ Accept: application/json, text/event-stream
 }
 
 ###
+
+POST {{Api.Conhecimento_HostAddress}}/api/v1/ingest
+Accept: application/json
+Content-Type: multipart/form-data; boundary=----ingest
+
+------ingest
+Content-Disposition: form-data; name="usuario"
+
+infis
+------ingest
+Content-Disposition: form-data; name="codigoDocumento"
+
+DOC-001
+------ingest
+Content-Disposition: form-data; name="validade"
+
+2027-12-31
+------ingest
+Content-Disposition: form-data; name="arquivo"; filename="documento.pdf"
+Content-Type: application/pdf
+
+< ./documento.pdf
+------ingest--
+
+###

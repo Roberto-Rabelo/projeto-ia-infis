@@ -20,12 +20,13 @@ Accept: application/json
 
 ###
 
-POST {{Api.Atendimento_HostAddress}}/atendimento
+POST {{Api.Atendimento_HostAddress}}/api/v1/atendimento
 Content-Type: application/json
 Accept: application/json
 
 {
-  "pergunta": "Qual o horário de atendimento ao aluno?"
+  "usuario": "Ana Souza",
+  "pergunta": "Qual o prazo para entrega da DCTF?"
 }
 
 ###

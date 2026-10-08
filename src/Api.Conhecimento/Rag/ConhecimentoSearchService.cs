@@ -1,3 +1,4 @@
+using Api.Conhecimento.Ingest;
 using Api.Conhecimento.Options;
 using Microsoft.Extensions.Options;
 
@@ -9,6 +10,7 @@ public sealed class ConhecimentoSearchService : IConhecimentoSearch
     private readonly IMarkdownChunker _chunker;
     private readonly IEmbeddingService _embeddings;
     private readonly IVectorStore _store;
+    private readonly IChunkRepository _repository;
     private readonly RagOptions _options;
     private readonly ILogger<ConhecimentoSearchService> _logger;
 
@@ -17,6 +19,7 @@ public sealed class ConhecimentoSearchService : IConhecimentoSearch
         IMarkdownChunker chunker,
         IEmbeddingService embeddings,
         IVectorStore store,
+        IChunkRepository repository,
         IOptions<RagOptions> options,
         ILogger<ConhecimentoSearchService> logger)
     {
@@ -24,6 +27,7 @@ public sealed class ConhecimentoSearchService : IConhecimentoSearch
         _chunker = chunker;
         _embeddings = embeddings;
         _store = store;
+        _repository = repository;
         _options = options.Value;
         _logger = logger;
     }
@@ -65,8 +69,19 @@ public sealed class ConhecimentoSearchService : IConhecimentoSearch
         string consulta,
         CancellationToken cancellationToken)
     {
-        var indexed = _store.ObterTodos();
-        if (indexed.Count == 0 || string.IsNullOrWhiteSpace(consulta))
+        if (string.IsNullOrWhiteSpace(consulta))
+        {
+            return [];
+        }
+
+        var persistidos = await _repository.ListarVigentesAsync(cancellationToken);
+        var indexed = persistidos.Count > 0
+            ? persistidos
+                .Select((chunk, indice) => new DocumentChunk(chunk.NomeDocumento, indice, chunk.Texto, chunk.Embedding))
+                .ToList()
+            : _store.ObterTodos().ToList();
+
+        if (indexed.Count == 0)
         {
             return [];
         }
