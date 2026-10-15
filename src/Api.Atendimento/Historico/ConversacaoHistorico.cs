@@ -46,4 +46,8 @@ public sealed class RespostaEstruturadaPersistida
 
     [BsonRepresentation(BsonType.Decimal128)]
     public decimal CustoEstimado { get; set; }
+
+    public bool EncaminharSuporteHumano { get; set; }
+
+    public long? IdOutboxEncaminhamento { get; set; }
 }

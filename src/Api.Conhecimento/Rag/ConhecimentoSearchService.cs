@@ -86,13 +86,47 @@ public sealed class ConhecimentoSearchService : IConhecimentoSearch
             return [];
         }
 
-        var consultaEmbedding = await _embeddings.GerarAsync(consulta, cancellationToken);
+        var siglas = ConsultaRagTermos.ExtrairSiglas(consulta);
+        var consultasEmbedding = new List<string> { consulta };
+        foreach (var sigla in siglas)
+        {
+            if (!consultasEmbedding.Contains(sigla))
+            {
+                consultasEmbedding.Add(sigla);
+            }
+        }
 
-        return indexed
-            .Select(chunk => (Chunk: chunk, Score: SimilaridadeCosseno.Calcular(consultaEmbedding, chunk.Embedding)))
+        var vetoresConsulta = await _embeddings.GerarLoteAsync(consultasEmbedding, cancellationToken);
+
+        var ranqueados = indexed
+            .Select(chunk =>
+            {
+                var similaridadeMax = vetoresConsulta
+                    .Select(vetor => SimilaridadeCosseno.Calcular(vetor, chunk.Embedding))
+                    .Max();
+
+                var boost = ConsultaRagTermos.CalcularBoostLiteral(chunk, siglas, consulta);
+                return (Chunk: chunk, Score: similaridadeMax + boost, Similaridade: similaridadeMax, Boost: boost);
+            })
             .OrderByDescending(item => item.Score)
             .Take(_options.QuantidadeResultados)
-            .Select(item => item.Chunk)
             .ToList();
+
+        if (ranqueados.Count > 0)
+        {
+            var resumo = string.Join(
+                ", ",
+                ranqueados.Select(item =>
+                    $"{item.Chunk.Arquivo}#{item.Chunk.Indice} score={item.Score:F3} (cos={item.Similaridade:F3}+boost={item.Boost:F3})"));
+
+            _logger.LogInformation(
+                "Busca RAG: {QuantidadeConsultas} embedding(s) ({Siglas} sigla(s)), top {TopK}: {Resumo}",
+                consultasEmbedding.Count,
+                siglas.Count,
+                ranqueados.Count,
+                resumo);
+        }
+
+        return ranqueados.Select(item => item.Chunk).ToList();
     }
 }

@@ -1,27 +1,21 @@
-using System.ClientModel;
-using System.Text.Json;
 using Api.Atendimento.Clients;
 using Api.Atendimento.Custos;
 using Api.Atendimento.Historico;
 using Api.Atendimento.Models;
 using Api.Atendimento.Options;
+using Api.Atendimento.SuporteHumano;
 using Microsoft.Extensions.Options;
-using OpenAI.Chat;
 
 namespace Api.Atendimento.Services;
 
 public sealed class OpenAiAtendimentoService : IAtendimentoService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
-
     private readonly IConhecimentoMcpClient _conhecimento;
     private readonly IConversacaoHistoricoRepository _historico;
     private readonly IConsumoTokensRepository _custos;
-    private readonly ChatClient _chatClient;
-    private readonly OpenAiOptions _options;
+    private readonly IOpenAiRespostaGerador _openAi;
+    private readonly IGeminiFallbackGerador _gemini;
+    private readonly IEncaminhamentoSuporteHumanoService _encaminhamentoSuporte;
     private readonly MongoHistoricoOptions _historicoOptions;
     private readonly SqlCustosOptions _custosOptions;
     private readonly ILogger<OpenAiAtendimentoService> _logger;
@@ -30,8 +24,9 @@ public sealed class OpenAiAtendimentoService : IAtendimentoService
         IConhecimentoMcpClient conhecimento,
         IConversacaoHistoricoRepository historico,
         IConsumoTokensRepository custos,
-        ChatClient chatClient,
-        IOptions<OpenAiOptions> options,
+        IOpenAiRespostaGerador openAi,
+        IGeminiFallbackGerador gemini,
+        IEncaminhamentoSuporteHumanoService encaminhamentoSuporte,
         IOptions<MongoHistoricoOptions> historicoOptions,
         IOptions<SqlCustosOptions> custosOptions,
         ILogger<OpenAiAtendimentoService> logger)
@@ -39,8 +34,9 @@ public sealed class OpenAiAtendimentoService : IAtendimentoService
         _conhecimento = conhecimento;
         _historico = historico;
         _custos = custos;
-        _chatClient = chatClient;
-        _options = options.Value;
+        _openAi = openAi;
+        _gemini = gemini;
+        _encaminhamentoSuporte = encaminhamentoSuporte;
         _historicoOptions = historicoOptions.Value;
         _custosOptions = custosOptions.Value;
         _logger = logger;
@@ -62,57 +58,31 @@ public sealed class OpenAiAtendimentoService : IAtendimentoService
         var historico = PromptAtendimento.FormatarHistorico(conversasAnteriores);
         var prompt = PromptAtendimento.Montar(usuario, contexto, historico, pergunta);
 
-        ChatCompletionOptions chatOptions = new()
-        {
-            ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
-                jsonSchemaFormatName: "resposta_atendimento",
-                jsonSchema: BinaryData.FromBytes("""
-                    {
-                      "type": "object",
-                      "properties": {
-                        "resposta": { "type": "string" },
-                        "categoria": { "type": "string" },
-                        "fontes": {
-                          "type": "array",
-                          "items": { "type": "string" }
-                        }
-                      },
-                      "required": ["resposta", "categoria", "fontes"],
-                      "additionalProperties": false
-                    }
-                    """u8.ToArray()),
-                jsonSchemaIsStrict: true)
-        };
+        var llm = await GerarRespostaLlmAsync(prompt, cancellationToken);
 
-        ClientResult<ChatCompletion> resultado = await _chatClient.CompleteChatAsync(
-            [new UserChatMessage(prompt)],
-            chatOptions,
+        var idOutbox = await _encaminhamentoSuporte.EncaminharSeNecessarioAsync(
+            usuario,
+            llm.Estruturada.EncaminharSuporteHumano,
+            llm.Estruturada.DescricaoEncaminhamento,
             cancellationToken);
 
-        ChatCompletion completion = resultado.Value;
-        var json = completion.Content[0].Text;
-        var estruturada = JsonSerializer.Deserialize<RespostaEstruturadaLlm>(json, JsonOptions)
-            ?? new RespostaEstruturadaLlm();
-
-        _logger.LogInformation("Resposta estruturada gerada pelo modelo {Modelo}.", _options.ChatModel);
-
-        var tokensEntrada = completion.Usage?.InputTokenCount ?? 0;
-        var tokensSaida = completion.Usage?.OutputTokenCount ?? 0;
         var (custoEntrada, custoSaida, custoTotal) = CalculadoraCustoTokens.Calcular(
-            tokensEntrada,
-            tokensSaida,
+            llm.TokensEntrada,
+            llm.TokensSaida,
             _custosOptions.PrecoEntradaPorMilhao,
             _custosOptions.PrecoSaidaPorMilhao);
 
         var resposta = new AtendimentoResponse(
-            estruturada.Resposta,
-            estruturada.Categoria,
-            estruturada.Fontes,
-            _options.ChatModel,
-            Fallback: false,
-            TokensEntrada: tokensEntrada,
-            TokensSaida: tokensSaida,
-            CustoEstimado: custoTotal);
+            llm.Estruturada.Resposta,
+            llm.Estruturada.Categoria,
+            llm.Estruturada.Fontes,
+            llm.Modelo,
+            llm.Fallback,
+            llm.TokensEntrada,
+            llm.TokensSaida,
+            custoTotal,
+            llm.Estruturada.EncaminharSuporteHumano,
+            idOutbox);
 
         var agora = DateTime.UtcNow;
         var conversa = new ConversacaoHistorico
@@ -130,7 +100,9 @@ public sealed class OpenAiAtendimentoService : IAtendimentoService
                 Fallback = resposta.Fallback,
                 TokensEntrada = resposta.TokensEntrada,
                 TokensSaida = resposta.TokensSaida,
-                CustoEstimado = resposta.CustoEstimado
+                CustoEstimado = resposta.CustoEstimado,
+                EncaminharSuporteHumano = resposta.EncaminharSuporteHumano,
+                IdOutboxEncaminhamento = resposta.IdOutboxEncaminhamento
             },
             RespostaTexto = resposta.Resposta
         };
@@ -144,8 +116,8 @@ public sealed class OpenAiAtendimentoService : IAtendimentoService
                 Modelo = resposta.Modelo,
                 Usuario = usuario,
                 DataHora = agora,
-                QtdTokensEntrada = tokensEntrada,
-                QtdTokensSaida = tokensSaida,
+                QtdTokensEntrada = llm.TokensEntrada,
+                QtdTokensSaida = llm.TokensSaida,
                 CustoTokensEntrada = custoEntrada,
                 CustoTokensSaida = custoSaida,
                 CustoTotal = custoTotal,
@@ -154,5 +126,36 @@ public sealed class OpenAiAtendimentoService : IAtendimentoService
             cancellationToken);
 
         return resposta;
+    }
+
+    private async Task<LlmRespostaGerada> GerarRespostaLlmAsync(
+        string prompt,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _openAi.GerarAsync(prompt, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(
+                ex,
+                "Falha na geração com OpenAI; acionando fallback Gemini.");
+
+            try
+            {
+                return await _gemini.GerarAsync(prompt, cancellationToken);
+            }
+            catch (Exception fallbackEx) when (fallbackEx is not OperationCanceledException)
+            {
+                _logger.LogError(
+                    fallbackEx,
+                    "Fallback Gemini também falhou após erro na OpenAI.");
+
+                throw new InvalidOperationException(
+                    "Não foi possível gerar a resposta com OpenAI nem com Gemini.",
+                    fallbackEx);
+            }
+        }
     }
 }

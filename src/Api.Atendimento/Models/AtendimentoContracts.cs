@@ -17,7 +17,9 @@ public sealed record AtendimentoResponse(
     bool Fallback,
     int TokensEntrada,
     int TokensSaida,
-    decimal CustoEstimado);
+    decimal CustoEstimado,
+    bool EncaminharSuporteHumano,
+    long? IdOutboxEncaminhamento);
 
 public sealed class RespostaEstruturadaLlm
 {
@@ -29,4 +31,10 @@ public sealed class RespostaEstruturadaLlm
 
     [JsonPropertyName("fontes")]
     public string[] Fontes { get; set; } = [];
+
+    [JsonPropertyName("encaminharSuporteHumano")]
+    public bool EncaminharSuporteHumano { get; set; }
+
+    [JsonPropertyName("descricaoEncaminhamento")]
+    public string DescricaoEncaminhamento { get; set; } = string.Empty;
 }

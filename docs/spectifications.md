@@ -56,3 +56,15 @@ fallback
 tokensEntrada
 tokensSaida
 custoEstimado
+encaminharSuporteHumano
+idOutboxEncaminhamento
+
+## Mensageria e suporte humano (Etapas 8–9)
+
+Outbox SQL (`OutboxMessage`) gravada via Semantic Kernel quando `encaminharSuporteHumano` for verdadeiro.
+
+Relay na Api.Atendimento: a cada 60 segundos, até 5 registros pendentes → fila RabbitMQ **`atendimentos`** (JSON: `id`, `usuario`, `descricao`).
+
+Worker **`Worker.AtendimentoSuporte`**: consome a fila, grava **`InboxMessage`**, envia e-mail HTML via Mailhog (SMTP local).
+
+Detalhes: `docs/mensageria-suporte.md`.

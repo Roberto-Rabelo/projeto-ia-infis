@@ -104,8 +104,10 @@ services:
         echo "Aguardando SQL Server..."
         for i in $$(seq 1 60); do
           if /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" >/dev/null 2>&1; then
-            echo "SQL Server pronto. Aplicando script inicial."
+            echo "SQL Server pronto. Aplicando scripts de init."
             /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -i /init/01-create-database.sql
+            /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -i /init/02-outbox-message.sql
+            /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -i /init/03-inbox-message.sql
             break
           fi
           sleep 2
@@ -119,6 +121,33 @@ services:
       timeout: 5s
       retries: 20
       start_period: 40s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: mensageria-infis-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: infis
+      RABBITMQ_DEFAULT_PASS: infis
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - rede-rag-infis
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: notificacao-infis-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - rede-rag-infis
 
   adminer:
     image: adminer:4

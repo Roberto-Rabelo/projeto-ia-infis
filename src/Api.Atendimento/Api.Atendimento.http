@@ -5,6 +5,38 @@ Accept: application/json
 
 ###
 
+GET {{Api.Atendimento_HostAddress}}/api/v1/config/openai?completa=true
+Accept: application/json
+
+###
+
+PUT {{Api.Atendimento_HostAddress}}/api/v1/config/openai
+Content-Type: application/json
+Accept: application/json
+
+{
+  "apiKey": "sua-chave-openai",
+  "persistirEm": "UserSecrets"
+}
+
+###
+
+GET {{Api.Atendimento_HostAddress}}/api/v1/config/gemini?completa=true
+Accept: application/json
+
+###
+
+PUT {{Api.Atendimento_HostAddress}}/api/v1/config/gemini
+Content-Type: application/json
+Accept: application/json
+
+{
+  "apiKey": "sua-chave-gemini",
+  "persistirEm": "UserSecrets"
+}
+
+###
+
 GET {{Api.Atendimento_HostAddress}}/conhecimento/ferramentas
 Accept: application/json
 

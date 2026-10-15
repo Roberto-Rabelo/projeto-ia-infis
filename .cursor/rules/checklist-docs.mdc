@@ -1,0 +1,15 @@
+---
+description: Manter docs/checklist.md sincronizado com o estado real do código
+alwaysApply: true
+---
+
+# Checklist do projeto
+
+Quando você **implementar, remover ou alterar de forma relevante** funcionalidades neste repositório (APIs, RAG, ingest, MCP, persistência, testes, infra):
+
+1. Abra `docs/checklist.md` e atualize os itens `[x]` / `[ ]` / `[-]` para refletir o código atual.
+2. Atualize a linha **Última revisão** com a data do dia (formato ISO `YYYY-MM-DD`).
+3. Se surgir nova capacidade, adicione um bullet na seção adequada; se algo foi descartado, remova ou marque como pendente com nota breve.
+4. Se a mudança afetar fluxo de atendimento ou ingest, revise também `docs/atendimento.md` ou `docs/ingest.md` quando necessário.
+
+Não encerre a tarefa de implementação sem revisar o checklist quando houver impacto funcional.

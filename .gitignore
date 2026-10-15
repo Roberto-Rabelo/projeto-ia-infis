@@ -10,6 +10,7 @@
 *.userosscache
 *.sln.docstates
 *.env
+**/appsettings.Local.json
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -87,6 +88,7 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 .artifacts/
+.build-out/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
