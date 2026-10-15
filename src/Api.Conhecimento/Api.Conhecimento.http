@@ -5,6 +5,22 @@ Accept: application/json
 
 ###
 
+GET {{Api.Conhecimento_HostAddress}}/api/v1/config/openai?completa=true
+Accept: application/json
+
+###
+
+PUT {{Api.Conhecimento_HostAddress}}/api/v1/config/openai
+Content-Type: application/json
+Accept: application/json
+
+{
+  "apiKey": "sua-chave-openai",
+  "persistirEm": "UserSecrets"
+}
+
+###
+
 POST {{Api.Conhecimento_HostAddress}}/mcp
 Content-Type: application/json
 Accept: application/json, text/event-stream

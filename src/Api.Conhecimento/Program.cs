@@ -1,3 +1,4 @@
+using Api.Conhecimento.Configuration;
 using Api.Conhecimento.Ingest;
 using Api.Conhecimento.Options;
 using Api.Conhecimento.Rag;
@@ -6,10 +7,11 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi;
 using Npgsql;
-using OpenAI.Embeddings;
 using Pgvector.Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
@@ -36,14 +38,8 @@ builder.Services
     .AddOptions<RagOptions>()
     .Bind(builder.Configuration.GetSection(RagOptions.SectionName));
 
-builder.Services.AddSingleton(sp =>
-{
-    var options = sp.GetRequiredService<IOptions<OpenAiOptions>>().Value;
-    var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("OpenAI");
-    var apiKey = ResolverChaveOpenAi(options.ApiKey, logger);
-
-    return new EmbeddingClient(options.EmbeddingModel, apiKey);
-});
+builder.Services.AddSingleton<IOpenAiChaveGestor, OpenAiChaveGestor>();
+builder.Services.AddSingleton<IOpenAiEmbeddingClientFactory, OpenAiEmbeddingClientFactory>();
 
 builder.Services.AddSingleton(sp =>
 {
@@ -72,6 +68,17 @@ builder.Services
 
 var app = builder.Build();
 
+{
+    var gestor = app.Services.GetRequiredService<IOpenAiChaveGestor>();
+    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OpenAI");
+    gestor.ObterChaveEfetiva();
+    var info = gestor.ObterInfo();
+    logger.LogInformation(
+        "Chave OpenAI carregada de {Origem}, sufixo {Sufixo}.",
+        info.Origem,
+        info.Sufixo);
+}
+
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
@@ -90,25 +97,3 @@ app.MapControllers();
 app.MapMcp("/mcp");
 
 app.Run();
-
-static string ResolverChaveOpenAi(string? apiKeyConfigurada, ILogger logger)
-{
-    var apiKey = apiKeyConfigurada;
-    var origem = "OpenAI:ApiKey (appsettings/user-secrets)";
-
-    if (string.IsNullOrWhiteSpace(apiKey))
-    {
-        apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-        origem = "OPENAI_API_KEY";
-    }
-
-    if (string.IsNullOrWhiteSpace(apiKey))
-    {
-        throw new InvalidOperationException(
-            "Configure a chave da OpenAI em User Secrets (OpenAI:ApiKey) ou na variável OPENAI_API_KEY.");
-    }
-
-    var sufixo = apiKey.Length >= 4 ? apiKey[^4..] : "????";
-    logger.LogInformation("Chave OpenAI carregada de {Origem}, sufixo {Sufixo}.", origem, sufixo);
-    return apiKey;
-}

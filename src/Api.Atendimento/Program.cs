@@ -1,17 +1,23 @@
 using Api.Atendimento.Clients;
+using Api.Atendimento.Configuration;
 using Api.Atendimento.Custos;
 using Api.Atendimento.Historico;
+using Api.Atendimento.Infrastructure;
 using Api.Atendimento.Options;
+using Api.Atendimento.Outbox;
 using Api.Atendimento.Services;
+using Api.Atendimento.SuporteHumano;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi;
 using MongoDB.Driver;
-using OpenAI.Chat;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<AtendimentoExceptionHandler>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -33,6 +39,10 @@ builder.Services
 builder.Services
     .AddOptions<OpenAiOptions>()
     .Bind(builder.Configuration.GetSection(OpenAiOptions.SectionName));
+
+builder.Services
+    .AddOptions<GeminiOptions>()
+    .Bind(builder.Configuration.GetSection(GeminiOptions.SectionName));
 
 builder.Services
     .AddOptions<MongoHistoricoOptions>()
@@ -57,20 +67,37 @@ builder.Services
     .ValidateOnStart();
 
 builder.Services.AddSingleton<IConsumoTokensRepository, SqlConsumoTokensRepository>();
+builder.Services.AddSingleton<IOutboxMessageRepository, SqlOutboxMessageRepository>();
 
-builder.Services.AddSingleton(sp =>
-{
-    var options = sp.GetRequiredService<IOptions<OpenAiOptions>>().Value;
-    var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("OpenAI");
-    var apiKey = ResolverChaveOpenAi(options.ApiKey, logger);
+builder.Services
+    .AddOptions<OutboxRelayOptions>()
+    .Bind(builder.Configuration.GetSection(OutboxRelayOptions.SectionName));
 
-    return new ChatClient(options.ChatModel, apiKey);
-});
+builder.Services.AddSingleton<IOutboxAtendimentoPublisher, RabbitMqOutboxAtendimentoPublisher>();
+builder.Services.AddHostedService<OutboxRelayBackgroundService>();
+builder.Services.AddSingleton<EncaminhamentoSuportePlugin>();
+builder.Services.AddSingleton<IEncaminhamentoSuporteHumanoService, EncaminhamentoSuporteHumanoService>();
 
+builder.Services.AddSingleton<IOpenAiChaveGestor, OpenAiChaveGestor>();
+builder.Services.AddSingleton<IGeminiChaveGestor, GeminiChaveGestor>();
+builder.Services.AddSingleton<IOpenAiChatClientFactory, OpenAiChatClientFactory>();
+builder.Services.AddSingleton<IOpenAiRespostaGerador, OpenAiRespostaGerador>();
+builder.Services.AddSingleton<IGeminiFallbackGerador, GeminiFallbackGerador>();
 builder.Services.AddSingleton<IConhecimentoMcpClient, ConhecimentoMcpClient>();
 builder.Services.AddSingleton<IAtendimentoService, OpenAiAtendimentoService>();
 
 var app = builder.Build();
+
+{
+    var gestor = app.Services.GetRequiredService<IOpenAiChaveGestor>();
+    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OpenAI");
+    gestor.ObterChaveEfetiva();
+    var info = gestor.ObterInfo();
+    logger.LogInformation(
+        "Chave OpenAI carregada de {Origem}, sufixo {Sufixo}.",
+        info.Origem,
+        info.Sufixo);
+}
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
@@ -89,25 +116,3 @@ app.UseHttpsRedirection();
 app.MapControllers();
 
 app.Run();
-
-static string ResolverChaveOpenAi(string? apiKeyConfigurada, ILogger logger)
-{
-    var apiKey = apiKeyConfigurada;
-    var origem = "OpenAI:ApiKey (appsettings/user-secrets)";
-
-    if (string.IsNullOrWhiteSpace(apiKey))
-    {
-        apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-        origem = "OPENAI_API_KEY";
-    }
-
-    if (string.IsNullOrWhiteSpace(apiKey))
-    {
-        throw new InvalidOperationException(
-            "Configure a chave da OpenAI em User Secrets (OpenAI:ApiKey) ou na variável OPENAI_API_KEY.");
-    }
-
-    var sufixo = apiKey.Length >= 4 ? apiKey[^4..] : "????";
-    logger.LogInformation("Chave OpenAI carregada de {Origem}, sufixo {Sufixo}.", origem, sufixo);
-    return apiKey;
-}

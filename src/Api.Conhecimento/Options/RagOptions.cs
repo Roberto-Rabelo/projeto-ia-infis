@@ -10,7 +10,7 @@ public sealed class RagOptions
 
     public int SobreposicaoChunk { get; set; } = 80;
 
-    public int QuantidadeResultados { get; set; } = 3;
+    public int QuantidadeResultados { get; set; } = 8;
 
     public string IdAgente { get; set; } = "api-conhecimento";
 
